@@ -245,10 +245,10 @@ def receive_image(image):
         keypoint_classifier_labels=keypoint_classifier_labels,
     )
 
-    print(result)
-
-    # end gesture recognition
-    emit("processed_image", {"result": result})
+    if result != 'null':
+        # end gesture recognition
+        print(result)
+        emit("processed_image", {"result": result})
 
 
 if __name__ == "__main__":
