@@ -188,7 +188,7 @@ class MyInputStreamHandler:
 
 
 # SETUP PROGRAM!!
-app = Flask(__name__)
+app = Flask(__name__, static_folder='build', static_url_path='/')
 CORS(app)
 app.config["SECRET_KEY"] = "secret!"
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -223,6 +223,9 @@ with open(
 history_length = 16
 point_history = deque(maxlen=history_length)
 
+@app.route('/')
+def index():
+    return app.send_static_file('index.html')
 
 @socketio.on("tesconnect")
 def connect(text):
