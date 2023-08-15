@@ -5,6 +5,7 @@ import csv
 import copy
 import argparse
 import itertools
+import json
 from collections import deque
 
 import cv2 as cv
@@ -14,7 +15,7 @@ import numpy as np
 from model import KeyPointClassifier
 
 # API
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS, cross_origin
 import eventlet
@@ -167,7 +168,6 @@ def base64_to_image(base64_string):
     return image
 
 # Custom InputStreamHandler
-# Custom InputStreamHandler
 class MyInputStreamHandler:
     def __init__(self):
         self.data_buffer = []
@@ -185,7 +185,20 @@ class MyInputStreamHandler:
     def put(self, data):
         self.data_buffer.extend(data)
 
+def loadHistory(file_path):
+    history = []
 
+    with open(file_path, 'r') as file:
+        for line in file:
+            data = json.loads(line)
+            history.append(data)
+
+    return history
+
+def save_to_file(data):
+    with open('data/history.txt', 'a') as file:
+        json.dump(data, file)
+        file.write('\n')
 
 # SETUP PROGRAM!!
 app = Flask(__name__, static_folder='build', static_url_path='/')
@@ -226,6 +239,21 @@ point_history = deque(maxlen=history_length)
 @app.route('/')
 def index():
     return app.send_static_file('index.html')
+
+@app.route('/transaction', methods=['POST'])
+def transaction():
+    data = request.json
+    
+    save_to_file(data.get('transaction'))
+    # Result data in below
+    # print(data.get('transaction'))
+
+    # code to printin below here..
+
+    respone = {'message': 'Transaction success'}
+
+    return jsonify(respone), 200
+
 
 @socketio.on("tesconnect")
 def connect(text):
