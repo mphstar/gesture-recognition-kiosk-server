@@ -202,6 +202,9 @@ def save_to_file(data):
         json.dump(data, file)
         file.write('\n')
 
+def toCurrency(value):
+    return "Rp. {:,}".format(value).replace(',', '.')
+
 # SETUP PROGRAM!!
 app = Flask(__name__, static_folder='build', static_url_path='/')
 CORS(app)
@@ -251,7 +254,7 @@ def transaction():
     # print(data.get('transaction'))
 
     try:
-        printer = Serial(devfile='COM3',
+        printer = Serial(devfile='/dev/ttyUSB0',
            baudrate=9600,
            bytesize=8,
            parity='N',
@@ -259,7 +262,8 @@ def transaction():
            timeout=1.00,
            dsrdtr=True)
         
-        total_items = data.get('total_items', 0)
+        total_items = data.get('transaction')['total_items']
+        price = data.get('transaction')['price']
         
         printer.text("Order List\n")
         printer.text("-----------------------------------------\n")
@@ -270,9 +274,12 @@ def transaction():
                 transaction_data.get('qty')
             )
             printer.text(print_text)
+            printer.text(toCurrency(transaction_data['subtotal']))
+            printer.text("\n\n")
 
         printer.text("-----------------------------------------\n")
         printer.text("Total Items: {}\n".format(total_items))
+        printer.text("Price: {}\n".format(toCurrency(price)))
 
         printer.cut()
         
@@ -280,11 +287,13 @@ def transaction():
         return jsonify(response), 200
     
     except Exception as e:
+        print(e)
         error_response = {'message': 'Transaction printing failed'}
         return jsonify(error_response), 500
 
-if __name__ == '__main__':
-        app.run()
+@app.route('/history')
+def history():
+    return jsonify({'history': loadHistory('data/history.txt')})
 
 @socketio.on("tesconnect")
 def connect(text):
