@@ -14,6 +14,8 @@ import numpy as np
 
 from model import KeyPointClassifier
 
+from escpos.printer import Serial
+
 # API
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
@@ -248,12 +250,41 @@ def transaction():
     # Result data in below
     # print(data.get('transaction'))
 
-    # code to printin below here..
+    try:
+        printer = Serial(devfile='COM3',
+           baudrate=9600,
+           bytesize=8,
+           parity='N',
+           stopbits=1,
+           timeout=1.00,
+           dsrdtr=True)
+        
+        total_items = data.get('total_items', 0)
+        
+        printer.text("Order List\n")
+        printer.text("-----------------------------------------\n")
+        
+        for transaction_data in data.get('transaction')['data']:
+            print_text = "{:<30} {:>10}\n".format(
+                transaction_data['data']['name'],
+                transaction_data.get('qty')
+            )
+            printer.text(print_text)
 
-    respone = {'message': 'Transaction success'}
+        printer.text("-----------------------------------------\n")
+        printer.text("Total Items: {}\n".format(total_items))
 
-    return jsonify(respone), 200
+        printer.cut()
+        
+        response = {'message': 'Transaction success'}
+        return jsonify(response), 200
+    
+    except Exception as e:
+        error_response = {'message': 'Transaction printing failed'}
+        return jsonify(error_response), 500
 
+if __name__ == '__main__':
+        app.run()
 
 @socketio.on("tesconnect")
 def connect(text):
