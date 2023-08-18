@@ -258,6 +258,28 @@ point_history = deque(maxlen=history_length)
 def index():
     return app.send_static_file('index.html')
 
+@app.route('/api/getCategory')
+def get_category():
+    conn = mysql.connect()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM category")
+    category = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    category_list = []
+    for cat in category:
+        category_item = {
+            'id': cat[0],
+            'name': cat[1]
+        }
+
+        category_list.append(category_item)
+
+    return jsonify({"categories": category_list})
+
 @app.route('/api/getProduct')
 def get_data():
     conn = mysql.connect()
@@ -280,6 +302,10 @@ def get_data():
         "drink": drink,
         "icecream": icecream
     }})
+
+@app.route('/api/getHistory')
+def get_history():
+    return
 
 @app.route('/transaction', methods=['POST'])
 def transaction():
