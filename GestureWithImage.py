@@ -15,6 +15,8 @@ import numpy as np
 from model import KeyPointClassifier
 
 from escpos.printer import Serial
+from PIL import Image
+
 
 # API
 from flask import Flask, render_template, request, jsonify
@@ -253,6 +255,8 @@ def transaction():
     # Result data in below
     # print(data.get('transaction'))
 
+    
+
     try:
         printer = Serial(devfile='/dev/ttyUSB0',
            baudrate=9600,
@@ -264,8 +268,9 @@ def transaction():
         
         total_items = data.get('transaction')['total_items']
         price = data.get('transaction')['price']
-        
-        printer.text("Order List\n")
+     
+
+        printer.text("                Order List\n")
         printer.text("-----------------------------------------\n")
         
         for transaction_data in data.get('transaction')['data']:
@@ -282,6 +287,7 @@ def transaction():
         printer.text("Price: {}\n".format(toCurrency(price)))
 
         printer.cut()
+        printer.close()
         
         response = {'message': 'Transaction success'}
         return jsonify(response), 200
