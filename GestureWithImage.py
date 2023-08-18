@@ -15,12 +15,15 @@ import numpy as np
 from model import KeyPointClassifier
 
 from escpos.printer import Serial
+from PIL import Image
+
 
 # API
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS, cross_origin
 import eventlet
+from flaskext.mysql import MySQL
 
 
 def get_args():
@@ -207,6 +210,16 @@ def toCurrency(value):
 
 # SETUP PROGRAM!!
 app = Flask(__name__, static_folder='build', static_url_path='/')
+
+# Connecting to database
+app.config['MYSQL_DATABASE_USER'] = 'root'
+app.config['MYSQL_DATABASE_PASSWORD'] = ''
+app.config['MYSQL_DATABASE_DB'] = 'kiosk'
+app.config['MYSQL_DATABASE_HOST'] = 'localhost' 
+
+mysql = MySQL(app)
+
+
 CORS(app)
 app.config["SECRET_KEY"] = "secret!"
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -245,6 +258,29 @@ point_history = deque(maxlen=history_length)
 def index():
     return app.send_static_file('index.html')
 
+@app.route('/api/getProduct')
+def get_data():
+    conn = mysql.connect()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM product WHERE id_category = 1")
+    snack = cursor.fetchall()
+
+    cursor.execute("SELECT * FROM product WHERE id_category = 2")
+    drink = cursor.fetchall()
+
+    cursor.execute("SELECT * FROM product WHERE id_category = 3")
+    icecream = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"products": {
+        "snack": snack,
+        "drink": drink,
+        "icecream": icecream
+    }})
+
 @app.route('/transaction', methods=['POST'])
 def transaction():
     data = request.json
@@ -252,6 +288,8 @@ def transaction():
     save_to_file(data.get('transaction'))
     # Result data in below
     # print(data.get('transaction'))
+
+    
 
     try:
         printer = Serial(devfile='/dev/ttyUSB0',
@@ -264,8 +302,9 @@ def transaction():
         
         total_items = data.get('transaction')['total_items']
         price = data.get('transaction')['price']
-        
-        printer.text("Order List\n")
+     
+
+        printer.text("                Order List\n")
         printer.text("-----------------------------------------\n")
         
         for transaction_data in data.get('transaction')['data']:
@@ -282,6 +321,7 @@ def transaction():
         printer.text("Price: {}\n".format(toCurrency(price)))
 
         printer.cut()
+        printer.close()
         
         response = {'message': 'Transaction success'}
         return jsonify(response), 200
