@@ -23,6 +23,7 @@ from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS, cross_origin
 import eventlet
+from flaskext.mysql import MySQL
 
 
 def get_args():
@@ -209,6 +210,16 @@ def toCurrency(value):
 
 # SETUP PROGRAM!!
 app = Flask(__name__, static_folder='build', static_url_path='/')
+
+# Connecting to database
+app.config['MYSQL_DATABASE_USER'] = 'mphstar'
+app.config['MYSQL_DATABASE_PASSWORD'] = '123'
+app.config['MYSQL_DATABASE_DB'] = 'kiosk'
+app.config['MYSQL_DATABASE_HOST'] = 'localhost' 
+
+mysql = MySQL(app)
+
+
 CORS(app)
 app.config["SECRET_KEY"] = "secret!"
 socketio = SocketIO(app, cors_allowed_origins="*")
