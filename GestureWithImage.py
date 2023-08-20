@@ -306,6 +306,48 @@ def get_category():
 
     return jsonify({"categories": category_list})
 
+@app.route('/api/product/delete', methods=['POST'])
+def delete():
+    data = request.json
+    
+    conn = mysql.connect()
+    cursor = conn.cursor()
+
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], data.get('image_path'))
+    if os.path.exists(file_path):
+        os.remove(file_path)
+
+    cursor.execute('DELETE FROM product WHERE id = %s', (data.get('id')))
+    
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({"message": "Success delete data"}), 200
+
+@app.route('/api/product/deleteSelection', methods=['POST'])
+def deleteSelection():
+    data = request.json
+    
+    conn = mysql.connect()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM product WHERE id IN ({})".format(','.join(['%s'] * len(data.get('id')))), (data.get('id')))
+    result = cursor.fetchall()
+
+    for row in result:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], row[4])
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+    cursor.execute("DELETE FROM product WHERE id IN ({})".format(','.join(['%s'] * len(data.get('id')))), (data.get('id')))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return jsonify({"message": "Success delete data"}), 200
+
 @app.route('/api/product/update', methods=['POST'])
 def update():
     try:
@@ -350,7 +392,7 @@ def create():
             conn = mysql.connect()
             cursor = conn.cursor()
 
-            cursor.execute('INSERT INTO product VALUES (null, %s, %s, %s, %s, 1)', (request.form.get('name'), request.form.get('description'), request.form.get('price'), name_file))
+            cursor.execute('INSERT INTO product VALUES (null, %s, %s, %s, %s, %s)', (request.form.get('name'), request.form.get('description'), request.form.get('price'), name_file, request.form.get('category')))
 
             conn.commit()
             cursor.close()
