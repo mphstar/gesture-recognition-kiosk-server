@@ -420,20 +420,30 @@ def get_data():
     cursor.execute("SELECT COUNT(*) as total FROM product WHERE id_category = 1 AND name LIKE %s", (f'%{search}%'))
     total_snack = cursor.fetchone()
 
-    cursor.execute('SELECT * FROM product WHERE id_category = 1 AND product.name LIKE %s ORDER BY product.id DESC LIMIT %s OFFSET %s', (f'%{search}%', limit, offset))
+    if 'page' in request.args or 'limit' in request.args:
+        cursor.execute('SELECT * FROM product WHERE id_category = 1 AND product.name LIKE %s ORDER BY product.id DESC LIMIT %s OFFSET %s', (f'%{search}%', limit, offset))
+    else:
+        cursor.execute('SELECT * FROM product WHERE id_category = 1 AND product.name LIKE %s ORDER BY product.id DESC', (f'%{search}%'))
+
     snack = cursor.fetchall()
 
-    cursor.execute("SELECT COUNT(*) as total FROM product WHERE id_category = 1 AND name LIKE %s", (f'%{search}%'))
+    cursor.execute("SELECT COUNT(*) as total FROM product WHERE id_category = 2 AND name LIKE %s", (f'%{search}%'))
     total_drink = cursor.fetchone()
 
-    cursor.execute("SELECT * FROM product WHERE id_category = 2")
+    if 'page' in request.args or 'limit' in request.args:
+        cursor.execute('SELECT * FROM product WHERE id_category = 2 AND product.name LIKE %s ORDER BY product.id DESC LIMIT %s OFFSET %s', (f'%{search}%', limit, offset))
+    else:
+        cursor.execute('SELECT * FROM product WHERE id_category = 2 AND product.name LIKE %s ORDER BY product.id DESC', (f'%{search}%'))
     drink = cursor.fetchall()
     
 
-    cursor.execute("SELECT COUNT(*) as total FROM product WHERE id_category = 1 AND name LIKE %s", (f'%{search}%'))
+    cursor.execute("SELECT COUNT(*) as total FROM product WHERE id_category = 3 AND name LIKE %s", (f'%{search}%'))
     total_ice = cursor.fetchone()
 
-    cursor.execute("SELECT * FROM product WHERE id_category = 3")
+    if 'page' in request.args or 'limit' in request.args:
+        cursor.execute('SELECT * FROM product WHERE id_category = 3 AND product.name LIKE %s ORDER BY product.id DESC LIMIT %s OFFSET %s', (f'%{search}%', limit, offset))
+    else:
+        cursor.execute('SELECT * FROM product WHERE id_category = 3 AND product.name LIKE %s ORDER BY product.id DESC', (f'%{search}%'))
     icecream = cursor.fetchall()
 
     cursor.close()
@@ -461,52 +471,80 @@ def get_history():
 @app.route('/transaction', methods=['POST'])
 def transaction():
     data = request.json
-    
-    save_to_file(data.get('transaction'))
+    # save_to_file(data.get('transaction'))
     # Result data in below
     # print(data.get('transaction'))
 
+    current_datetime = datetime.datetime.now()
+    timestamp = current_datetime.strftime('%Y%m%d%H%M%S')
+
+    idtransaction = f'TR{timestamp}'
+
+    transaction = data.get('transaction')
+
+    conn = mysql.connect()
+    cursor = conn.cursor()
+
+    cursor.execute("INSERT INTO history (id, total_price, total_items, date) VALUES (%s, %s, %s, %s)", (idtransaction, transaction['price'], transaction['total_items'], timestamp))
+    conn.commit()
     
+    detail_data = transaction['data']
 
-    try:
-        printer = Serial(devfile='/dev/ttyUSB0',
-           baudrate=9600,
-           bytesize=8,
-           parity='N',
-           stopbits=1,
-           timeout=1.00,
-           dsrdtr=True)
+    for detail in detail_data:
+        item_id = detail['data']['id']
+        subtotal = detail['subtotal']
+        qty = detail['qty']
+
+        cursor.execute("INSERT INTO detail_history (id, quantity, subtotal, id_product) VALUES (%s, %s, %s, %s)",
+                        (idtransaction, qty, subtotal, item_id))
+        conn.commit()
+    
+    cursor.close()
+    conn.close()
+
+    if 'isPrinting' in data:
+        try:
+            printer = Serial(devfile='/dev/ttyUSB0',
+            baudrate=9600,
+            bytesize=8,
+            parity='N',
+            stopbits=1,
+            timeout=1.00,
+            dsrdtr=True)
+            
+            total_items = data.get('transaction')['total_items']
+            price = data.get('transaction')['price']
         
-        total_items = data.get('transaction')['total_items']
-        price = data.get('transaction')['price']
-     
 
-        printer.text("                Order List\n")
-        printer.text("-----------------------------------------\n")
+            printer.text("                Order List\n")
+            printer.text("-----------------------------------------\n")
+            
+            for transaction_data in data.get('transaction')['data']:
+                print_text = "{:<30} {:>10}\n".format(
+                    transaction_data['data']['name'],
+                    transaction_data.get('qty')
+                )
+                printer.text(print_text)
+                printer.text(toCurrency(transaction_data['subtotal']))
+                printer.text("\n\n")
+
+            printer.text("-----------------------------------------\n")
+            printer.text("Total Items: {}\n".format(total_items))
+            printer.text("Price: {}\n".format(toCurrency(price)))
+
+            printer.cut()
+            printer.close()
+            
+            response = {'message': 'Transaction success'}
+            return jsonify(response), 200
         
-        for transaction_data in data.get('transaction')['data']:
-            print_text = "{:<30} {:>10}\n".format(
-                transaction_data['data']['name'],
-                transaction_data.get('qty')
-            )
-            printer.text(print_text)
-            printer.text(toCurrency(transaction_data['subtotal']))
-            printer.text("\n\n")
-
-        printer.text("-----------------------------------------\n")
-        printer.text("Total Items: {}\n".format(total_items))
-        printer.text("Price: {}\n".format(toCurrency(price)))
-
-        printer.cut()
-        printer.close()
-        
+        except Exception as e:
+            print(e)
+            error_response = {'message': 'Transaction printing failed'}
+            return jsonify(error_response), 500
+    else:
         response = {'message': 'Transaction success'}
         return jsonify(response), 200
-    
-    except Exception as e:
-        print(e)
-        error_response = {'message': 'Transaction printing failed'}
-        return jsonify(error_response), 500
 
 @app.route('/history')
 def history():
