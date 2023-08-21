@@ -8,6 +8,7 @@ import itertools
 import datetime
 import json
 import os
+import hashlib
 from collections import deque
 
 import cv2 as cv
@@ -210,6 +211,10 @@ def save_to_file(data):
 def toCurrency(value):
     return "Rp. {:,}".format(value).replace(',', '.')
 
+def calculate_md5(input_string):
+    md5_hash = hashlib.md5(input_string.encode()).hexdigest()
+    return md5_hash
+
 def productsToObject(arr):
     objects = [
         {
@@ -406,6 +411,157 @@ def create():
         print(e)
         return str(e), 500
 
+@app.route('/api/login', methods=['POST'])
+def cekLogin():
+    try:
+        data = request.form
+
+        conn = mysql.connect()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM account WHERE userid = %s AND password = %s", (data.get('userid'), calculate_md5(data.get('password'))))
+        result = cursor.fetchone()
+
+        cursor.close()
+        conn.close()
+
+        if(result):
+            return jsonify({
+                "status": "success",
+                "message": "Login Success",
+                "result": {
+                    "id": result[0],
+                    "userid": result[1],
+                }
+            })
+
+        return jsonify({
+            "status": "failed",
+            "message": "ID / password is wrong"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
+
+@app.route('/api/dashboard', methods=['GET'])
+def getDashboard():
+    try:
+        conn = mysql.connect()
+        cursor = conn.cursor()
+
+        # get count
+        cursor.execute('SELECT COUNT(*) as total FROM product WHERE id_category = 1')
+        totalSnack = cursor.fetchone()
+
+        # get count
+        cursor.execute('SELECT COUNT(*) as total FROM product WHERE id_category = 2')
+        totalDrink = cursor.fetchone()
+
+        # get count
+        cursor.execute('SELECT COUNT(*) as total FROM product WHERE id_category = 3')
+        totalIcecream = cursor.fetchone()
+
+        # get best seller
+        cursor.execute('SELECT *, COUNT(detail_history.id) as total FROM product JOIN detail_history ON product.id = detail_history.id_product  GROUP BY product.id ORDER BY total DESC')
+        bestSeller = cursor.fetchall()
+
+        # get total / category
+        cursor.execute('SELECT category.id AS category, COALESCE(COUNT(detail_history.id), 0) AS total FROM category LEFT JOIN product ON product.id_category = category.id LEFT JOIN detail_history ON detail_history.id_product = product.id GROUP BY category.name;')
+        category = cursor.fetchall()
+
+
+        cursor.close()
+        conn.close()
+
+        return jsonify({
+            "count": {
+                "snack": totalSnack[0],
+                "drink": totalDrink[0],
+                "icecream": totalIcecream[0]
+            },
+            "best_seller": bestSeller,
+            "category": {
+                "snack": category[2][1],
+                "drink": category[0][1],
+                "icecream": category[1][1]
+            }
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
+@app.route('/api/getHistory', methods=['GET'])
+def getHistory():
+    try:
+        page = request.args.get('page', default=1, type=int)
+        limit = request.args.get('limit', default=6, type=int)
+        search = request.args.get('search', default='')
+
+        offset = (page - 1) * limit
+        
+        conn = mysql.connect()
+        cur = conn.cursor()
+
+        cur.execute("SELECT COUNT(*) as total FROM history WHERE id LIKE %s", (f'%{search}%'))
+        total = cur.fetchone()
+
+        # Ambil data dari history
+        cur.execute("SELECT * FROM history WHERE id LIKE %s ORDER BY date DESC LIMIT %s OFFSET %s", (f'%{search}%', limit, offset))
+        history_data = cur.fetchall()
+
+        combined_data = []
+        
+        for history in history_data:
+            transaction_id = history[0]
+            total_items = history[2]
+            price = history[1]
+            datetime = history[3]
+
+            # Ambil detail_data berdasarkan ID transaksi
+            cur.execute("SELECT * FROM detail_history JOIN product ON detail_history.id_product = product.id WHERE detail_history.id = %s", (transaction_id,))
+            detail_data = cur.fetchall()
+
+            details_list = []
+            for detail in detail_data:
+                item_id = detail[0]
+                subtotal = detail[2]
+                qty = detail[1]
+                id_product = detail[3]
+                name_product = detail[5]
+                image = detail[8]
+
+                details_list.append({
+                    'item_id': item_id,
+                    'qty': qty,
+                    'subtotal': subtotal,
+                    'id_product': id_product,
+                    'name': name_product,
+                    'image': image
+                })
+
+            combined_data.append({
+                'transaction_id': transaction_id,
+                'total_items': total_items,
+                'price': price,
+                'datetime': datetime,
+                'details': details_list
+            })
+
+        cur.close()
+        conn.close()
+
+        return jsonify({
+            "total": total,
+            "data": combined_data
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
 @app.route('/api/getProduct')
 def get_data():
     page = request.args.get('page', default=1, type=int)
@@ -464,9 +620,6 @@ def get_data():
         }
     }})
 
-@app.route('/api/getHistory')
-def get_history():
-    return
 
 @app.route('/transaction', methods=['POST'])
 def transaction():
@@ -517,6 +670,7 @@ def transaction():
         
 
             printer.text("                Order List\n")
+            printer.text(f'            {idtransaction}\n')
             printer.text("-----------------------------------------\n")
             
             for transaction_data in data.get('transaction')['data']:
