@@ -5,7 +5,9 @@ import csv
 import copy
 import argparse
 import itertools
+import datetime
 import json
+import os
 from collections import deque
 
 import cv2 as cv
@@ -208,12 +210,36 @@ def save_to_file(data):
 def toCurrency(value):
     return "Rp. {:,}".format(value).replace(',', '.')
 
+def productsToObject(arr):
+    objects = [
+        {
+            "id": row[0],
+            "name": row[1],
+            "description": row[2],
+            "price": row[3],
+            "image": row[4],
+            "category_id": row[5]
+        }
+        for row in arr
+    ]
+
+    return objects
+
+def generate_unique_filename(filename):
+    now = datetime.datetime.now()
+    timestamp = now.strftime('%Y%m%d%H%M%S')
+    unique_filename = f'{timestamp}_{filename}'
+    return unique_filename
+
 # SETUP PROGRAM!!
 app = Flask(__name__, static_folder='build', static_url_path='/')
 
+UPLOAD_FOLDER = 'build/uploads'  # Folder to save uploaded images
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
 # Connecting to database
-app.config['MYSQL_DATABASE_USER'] = 'root'
-app.config['MYSQL_DATABASE_PASSWORD'] = ''
+app.config['MYSQL_DATABASE_USER'] = 'mphstar'
+app.config['MYSQL_DATABASE_PASSWORD'] = '123'
 app.config['MYSQL_DATABASE_DB'] = 'kiosk'
 app.config['MYSQL_DATABASE_HOST'] = 'localhost' 
 
@@ -280,16 +306,90 @@ def get_category():
 
     return jsonify({"categories": category_list})
 
+@app.route('/api/product/update', methods=['POST'])
+def update():
+    try:
+        conn = mysql.connect()
+        cursor = conn.cursor()
+
+        if 'image' in request.files:
+            # update images
+            file_path = os.path.join(app.config['UPLOAD_FOLDER'], request.form.get('filename_old').split('/')[-1])
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            
+            image = request.files['image']
+            name_file = generate_unique_filename(image.filename)
+            filename = os.path.join(app.config['UPLOAD_FOLDER'], name_file)
+            image.save(filename)
+
+            cursor.execute('UPDATE product SET name = %s, description = %s, price = %s, image = %s WHERE id = %s', (request.form.get('name'), request.form.get('description'), request.form.get('price'), name_file, request.form.get('id')))
+
+        else:
+            cursor.execute('UPDATE product SET name = %s, description = %s, price = %s WHERE id = %s', (request.form.get('name'), request.form.get('description'), request.form.get('price'), request.form.get('id')))
+        
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"message": "success"}), 200
+
+    except Exception as e:
+        print(e)
+        return str(e), 500
+
+@app.route('/api/product/create', methods=['POST'])
+def create():
+    try:
+        image = request.files['image']
+        if(image.filename != ''):
+            # Save the uploaded image to the specified folder
+            name_file = generate_unique_filename(image.filename)
+            filename = os.path.join(app.config['UPLOAD_FOLDER'], name_file)
+            image.save(filename)
+            conn = mysql.connect()
+            cursor = conn.cursor()
+
+            cursor.execute('INSERT INTO product VALUES (null, %s, %s, %s, %s, 1)', (request.form.get('name'), request.form.get('description'), request.form.get('price'), name_file))
+
+            conn.commit()
+            cursor.close()
+            conn.close()
+
+            return jsonify({
+                "message": "Success add data"
+            }), 200
+
+    except Exception as e:
+        print(e)
+        return str(e), 500
+
 @app.route('/api/getProduct')
 def get_data():
+    page = request.args.get('page', default=1, type=int)
+    limit = request.args.get('limit', default=6, type=int)
+    search = request.args.get('search', default='')
+
+    offset = (page - 1) * limit
+
     conn = mysql.connect()
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM product WHERE id_category = 1")
+    cursor.execute("SELECT COUNT(*) as total FROM product WHERE id_category = 1 AND name LIKE %s", (f'%{search}%'))
+    total_snack = cursor.fetchone()
+
+    cursor.execute('SELECT * FROM product WHERE id_category = 1 AND product.name LIKE %s ORDER BY product.id DESC LIMIT %s OFFSET %s', (f'%{search}%', limit, offset))
     snack = cursor.fetchall()
+
+    cursor.execute("SELECT COUNT(*) as total FROM product WHERE id_category = 1 AND name LIKE %s", (f'%{search}%'))
+    total_drink = cursor.fetchone()
 
     cursor.execute("SELECT * FROM product WHERE id_category = 2")
     drink = cursor.fetchall()
+    
+
+    cursor.execute("SELECT COUNT(*) as total FROM product WHERE id_category = 1 AND name LIKE %s", (f'%{search}%'))
+    total_ice = cursor.fetchone()
 
     cursor.execute("SELECT * FROM product WHERE id_category = 3")
     icecream = cursor.fetchall()
@@ -298,9 +398,18 @@ def get_data():
     conn.close()
 
     return jsonify({"products": {
-        "snack": snack,
-        "drink": drink,
-        "icecream": icecream
+        "snack": {
+            "total_data": total_snack[0],
+            "data": productsToObject(snack)
+        },
+        "drink": {
+            "total_data": total_drink[0],
+            "data": productsToObject(drink)
+        },
+        "icecream": {
+            "total_data": total_ice[0],
+            "data": productsToObject(icecream)
+        }
     }})
 
 @app.route('/api/getHistory')
