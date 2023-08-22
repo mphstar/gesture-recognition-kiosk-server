@@ -700,9 +700,9 @@ def transaction():
         response = {'message': 'Transaction success'}
         return jsonify(response), 200
 
-@app.route('/history')
-def history():
-    return jsonify({'history': loadHistory('data/history.txt')})
+# @app.route('/history')
+# def history():
+#     return jsonify({'history': loadHistory('data/history.txt')})
 
 @socketio.on("tesconnect")
 def connect(text):
