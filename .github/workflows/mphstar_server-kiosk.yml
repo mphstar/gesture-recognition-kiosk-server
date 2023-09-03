@@ -54,6 +54,9 @@ jobs:
           name: python-app
           path: .
 
+      - name: Activate virtual environment
+        run: source venv/bin/activate
+
       - name: Run GestureWithImage.py
         run: python GestureWithImage.py
           
